@@ -1,0 +1,11 @@
+{
+  "name": "dgt",
+  "version": "1.0.0",
+  "description": "Required\r ```bash\r   python@3.12.4\r   pipenv\r ```\r Run\r ```bash\r   python src/Main.py\r ```\r Linting\r ```bash\r   pylint src\r ```\r Formater\r ```bash\r   black src\r ```",
+  "main": "index.js",
+  "scripts": {
+    "dev": "python src/Main.py"
+  },
+  "author": "",
+  "license": "ISC"
+}
