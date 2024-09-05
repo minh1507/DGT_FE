@@ -16,12 +16,11 @@ class Login_View(QtWidgets.QWidget):
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(40, 40, 40, 40)
         layout.setSpacing(20)
-        self.setStyleSheet("background-color: #ecf0f1;")  # Light background color
 
         # Title Label
         title_label = QtWidgets.QLabel("Login", self)
         title_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        title_label.setStyleSheet("font-size: 24px; font-weight: bold; color: #2c3e50;")
+        title_label.setStyleSheet("font-size: 24px; font-weight: bold; color: white;")
         layout.addWidget(title_label)
 
         # Username input
@@ -32,8 +31,6 @@ class Login_View(QtWidgets.QWidget):
             font-size: 16px;
             border: 1px solid #bdc3c7;
             border-radius: 5px;
-            background-color: white;
-            color: black;
         """)
 
         # Password input
@@ -45,15 +42,13 @@ class Login_View(QtWidgets.QWidget):
             font-size: 16px;
             border: 1px solid #bdc3c7;
             border-radius: 5px;
-            background-color: white;
-            color: black;
         """)
 
         self.show_password_checkbox = QtWidgets.QCheckBox("Show Password", self)
         self.show_password_checkbox.setStyleSheet("""
             QCheckBox {
                 font-size: 14px;
-                color: #2c3e50;  /* Text color */
+                color: white;  /* Text color */
                 padding: 5px;    /* Padding around the checkbox */
             }
             QCheckBox::indicator {
