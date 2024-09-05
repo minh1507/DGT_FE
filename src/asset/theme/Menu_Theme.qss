@@ -1,0 +1,21 @@
+QMenu {
+                padding: 0;
+                margin: 0;
+                background-color: #333333;
+                border: 1px solid #555555;
+                border-radius: 4px;
+            }
+            QMenu::item {
+                padding: 10px 20px;
+                margin: 0;
+                color: #ffffff;
+                border: none;
+            }
+            QMenu::item:selected {
+                background-color: #444444;
+                color: #ffffff;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #555555;
+            }
