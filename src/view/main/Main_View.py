@@ -10,7 +10,7 @@ from util.Theme_Util import ThemeUtil
 from common.const.Global_Const import Global_Const
 from Module import Module
 from view.layout.Toolbar_View import Toolbar_View
-from PySide6.QtMultimedia import QMediaPlayer
+from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 class RecordingItem(QWidget):
     delete_requested = Signal(str)
@@ -18,11 +18,21 @@ class RecordingItem(QWidget):
     def __init__(self, filename, parent=None):
         super().__init__(parent)
         self.filename = filename
-        self.player = QMediaPlayer()  # Create a media player for playback
-        self.player.setSource(QUrl.fromLocalFile(os.path.join("src", "asset", "output", filename)))
+        self.player = QMediaPlayer(self)
+        self.audio_output = QAudioOutput(self)  # Create QAudioOutput object
+        self.player.setAudioOutput(self.audio_output)  # Set audio output for the player
+        self.audio_output.setVolume(1.0)  # Set volume (0.0 to 1.0 scale)
+
+        # Set the media source for playback
+        file_url = QUrl.fromLocalFile(os.path.join("src", "asset", "output", filename))
+        self.player.setSource(file_url)
+
+        # Monitor for media being ready
+        self.player.mediaStatusChanged.connect(self.handle_media_status)
+
         self.is_playing = False
         self.init_ui()
-        
+
         # Connect QMediaPlayer's positionChanged signal to update the playback time
         self.player.positionChanged.connect(self.update_playback_time)
         
@@ -109,16 +119,28 @@ class RecordingItem(QWidget):
 
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
 
+    @Slot(QMediaPlayer.MediaStatus)
+    def handle_media_status(self, status):
+        """Handle media status changes to ensure the media is loaded."""
+        if status == QMediaPlayer.LoadedMedia:
+            print("Media loaded successfully.")
+        elif status == QMediaPlayer.InvalidMedia:
+            print("Failed to load media.")
+            
     @Slot()
     def toggle_playback(self):
         """Toggle playback state between play and pause."""
-        if self.is_playing:
+        if self.player.mediaStatus() == QMediaPlayer.NoMedia:
+            print("No media loaded")
+            return
+
+        # Handle play and pause toggle based on media player state
+        if self.player.playbackState() == QMediaPlayer.PlayingState:
             self.player.pause()
             self.play_pause_button.setIcon(QIcon('src/asset/image/play'))  # Change to a play icon
         else:
             self.player.play()
             self.play_pause_button.setIcon(QIcon('src/asset/image/pause'))  # Change to a pause icon
-        self.is_playing = not self.is_playing
 
     @Slot()
     def reset_playback(self):
@@ -296,12 +318,22 @@ class MainView(QtWidgets.QWidget):
 
     def delete_recording(self, filename):
         """Delete a selected recording."""
+        # First, stop any playback associated with the file
+        for i in range(self.recordings_list.count()):
+            item_widget = self.recordings_list.itemWidget(self.recordings_list.item(i))
+            if item_widget and item_widget.filename == filename:
+                item_widget.player.stop()  # Stop the media player
+                item_widget.player.setSource(QUrl())  # Clear the source to release the file
+
         file_path = os.path.join("src", "asset", "output", filename)
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            self.recordings.remove(filename)
-            self.refresh_recordings_list()
-            QtWidgets.QMessageBox.information(self, "Deleted", f"{filename} has been deleted.")
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)  # Now, safely remove the file
+                self.recordings.remove(filename)
+                self.refresh_recordings_list()
+                QtWidgets.QMessageBox.information(self, "Deleted", f"{filename} has been deleted.")
+        except PermissionError:
+            QtWidgets.QMessageBox.warning(self, "Error", f"Cannot delete {filename}. The file is being used by another process.")
 
     def switch_to_home(self):
         """Switch to home view and refresh recordings list."""
@@ -357,9 +389,9 @@ class MainView(QtWidgets.QWidget):
         """Save recorded audio to a WAV file."""
         with wave.open(filename, 'wb') as wf:
             wf.setnchannels(1)
-            wf.setsampwidth(2)  # Assuming 16-bit audio
+            wf.setsampwidth(2)  # 16-bit audio
             wf.setframerate(self.fs)
-            wf.writeframes(b''.join(np.array(self.frames).flatten()))
+            wf.writeframes(b''.join(np.array(self.frames).astype(np.int16).flatten()))
     
     def prompt_for_filename(self):
         """Prompt the user to input a filename for the new recording."""
