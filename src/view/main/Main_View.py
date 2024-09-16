@@ -40,7 +40,10 @@ class RecordingItem(QWidget):
 
         details_layout = QVBoxLayout()
 
-        name = QLabel(self.filename)
+        # Strip the .wav extension from the filename
+        name_without_extension = os.path.splitext(self.filename)[0]
+
+        name = QLabel(name_without_extension)
         name.setStyleSheet("font-size: 16px; font-weight: bold; color: #fff; padding: 5px; background-color: #333; border-radius: 8px;")
         name.setWordWrap(True)
         name.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
@@ -69,7 +72,7 @@ class RecordingItem(QWidget):
         background-color: rgba(255, 255, 255, 0.2);
         border-radius: 12px;
     }
-""")
+    """)
 
         self.play_pause_button.setFixedSize(24, 24)
         self.play_pause_button.clicked.connect(self.toggle_playback)
@@ -88,7 +91,7 @@ class RecordingItem(QWidget):
         background-color: rgba(52, 152, 219, 0.2);
         border-radius: 12px;
     }
-""")
+    """)
 
         self.reset_button.setFixedSize(24, 24)
         self.reset_button.clicked.connect(self.reset_playback)
@@ -108,7 +111,7 @@ class RecordingItem(QWidget):
         background-color: rgba(255, 107, 107, 0.2);
         border-radius: 12px;
     }
-""")
+    """)
 
         delete_button.setFixedSize(24, 24)
         delete_button.clicked.connect(self.delete_confirmation)
@@ -152,11 +155,11 @@ class RecordingItem(QWidget):
     def update_playback_time(self, position):
         """Update the playback time label with the current position."""
         duration = self.player.duration()
-        if duration > 0:
-            # Calculate playback time in minutes and seconds
-            position_text = self.format_time(position)
-            duration_text = self.format_time(duration)
-            self.duration.setText(f" Duration: {position_text} / {duration_text}")
+        if duration < 0:  # Handle invalid duration
+            duration = 0
+        position_text = self.format_time(position)
+        duration_text = self.format_time(duration)
+        self.duration.setText(f" Duration: {position_text} / {duration_text}")
 
     def format_time(self, milliseconds):
         """Format milliseconds into MM:SS format."""
@@ -378,12 +381,22 @@ class MainView(QtWidgets.QWidget):
 
     def save_wav(self, filename):
         """Save recorded audio to a WAV file."""
-        with wave.open(filename, 'wb') as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)  # 16-bit audio
-            wf.setframerate(self.fs)
-            wf.writeframes(b''.join(np.array(self.frames).astype(np.int16).flatten()))
-    
+        output_dir = os.path.dirname(filename)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        try:
+            # Concatenate frames into a single array
+            audio_data = np.concatenate(self.frames)
+            
+            with wave.open(filename, 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)  # 16-bit audio
+                wf.setframerate(self.fs)
+                wf.writeframes(audio_data.tobytes())
+        except IOError as e:
+            QtWidgets.QMessageBox.warning(self, "File Error", f"Failed to save recording: {e}")
+
     def prompt_for_filename(self):
         """Prompt the user to input a filename for the new recording."""
         filename, ok = QInputDialog.getText(self, 'Enter Filename', 'Enter the name for the new recording (without extension):')
