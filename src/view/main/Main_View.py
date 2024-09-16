@@ -27,9 +27,6 @@ class RecordingItem(QWidget):
         file_url = QUrl.fromLocalFile(os.path.join("src", "asset", "output", filename))
         self.player.setSource(file_url)
 
-        # Monitor for media being ready
-        self.player.mediaStatusChanged.connect(self.handle_media_status)
-
         self.is_playing = False
         self.init_ui()
 
@@ -118,14 +115,6 @@ class RecordingItem(QWidget):
         layout.addWidget(delete_button)
 
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.MinimumExpanding)
-
-    @Slot(QMediaPlayer.MediaStatus)
-    def handle_media_status(self, status):
-        """Handle media status changes to ensure the media is loaded."""
-        if status == QMediaPlayer.LoadedMedia:
-            print("Media loaded successfully.")
-        elif status == QMediaPlayer.InvalidMedia:
-            print("Failed to load media.")
             
     @Slot()
     def toggle_playback(self):
@@ -289,8 +278,10 @@ class MainView(QtWidgets.QWidget):
             }
         """)
         self.recordings_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)  # Make sure it can expand
+
+        home_layout.addStretch()
+
         home_layout.addWidget(self.recordings_list)
-        home_layout.addStretch()  # Add stretch factor to ensure the list expands
 
         self.recordings_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.recordings_list.customContextMenuRequested.connect(self.show_context_menu)
@@ -428,3 +419,7 @@ class MainView(QtWidgets.QWidget):
             item.setSizeHint(widget.sizeHint())
             self.recordings_list.addItem(item)
             self.recordings_list.setItemWidget(item, widget)
+
+        # Set fixed height of QListWidget to 400
+        self.recordings_list.setFixedHeight(400)
+

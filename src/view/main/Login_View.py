@@ -1,4 +1,5 @@
 from PySide6 import QtWidgets, QtGui, QtCore
+from PySide6.QtCore import Qt
 
 from view.main.Main_View import MainView
 
@@ -139,7 +140,8 @@ class Login_View(QtWidgets.QWidget):
 
     def accept_login(self):
         self.main_window = MainView(self)
-        self.main_window.showFullScreen()
+        self.main_window.setMinimumSize(800, 690)
+        self.main_window.setWindowFlags(Qt.FramelessWindowHint)
         self.main_window.show()
         self.close()
 
