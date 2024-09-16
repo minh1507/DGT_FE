@@ -12,6 +12,13 @@ class Login_View(QtWidgets.QWidget):
         self.setFixedSize(400, 350)
         self.setWindowIcon(QtGui.QIcon('./src/asset/image/logo.png'))
 
+        # Set a dark background color for the widget
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #2c3e50;
+            }
+        """)
+
         # Set the layout
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(40, 40, 40, 40)
@@ -20,7 +27,11 @@ class Login_View(QtWidgets.QWidget):
         # Title Label
         title_label = QtWidgets.QLabel("Login", self)
         title_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-        title_label.setStyleSheet("font-size: 24px; font-weight: bold; color: white;")
+        title_label.setStyleSheet("""
+            font-size: 28px;
+            font-weight: bold;
+            color: #ecf0f1;
+        """)
         layout.addWidget(title_label)
 
         # Username input
@@ -29,9 +40,12 @@ class Login_View(QtWidgets.QWidget):
         self.username.setStyleSheet("""
             padding: 12px;
             font-size: 16px;
-            border: 1px solid #bdc3c7;
+            border: 1px solid #7f8c8d;
             border-radius: 5px;
+            background-color: #34495e;
+            color: #ecf0f1;
         """)
+        layout.addWidget(self.username)
 
         # Password input
         self.password = QtWidgets.QLineEdit(self)
@@ -40,43 +54,47 @@ class Login_View(QtWidgets.QWidget):
         self.password.setStyleSheet("""
             padding: 12px;
             font-size: 16px;
-            border: 1px solid #bdc3c7;
+            border: 1px solid #7f8c8d;
             border-radius: 5px;
+            background-color: #34495e;
+            color: #ecf0f1;
         """)
+        layout.addWidget(self.password)
 
+        # Show password checkbox
         self.show_password_checkbox = QtWidgets.QCheckBox("Show Password", self)
         self.show_password_checkbox.setStyleSheet("""
             QCheckBox {
                 font-size: 14px;
-                color: white;  /* Text color */
-                padding: 5px;    /* Padding around the checkbox */
+                color: #ecf0f1;
+                padding: 5px;
             }
             QCheckBox::indicator {
-                width: 10px; /* Size of the checkbox */
-                height: 10px;
-                border: 1px solid #3498db; /* Border color */
-                background-color: white; /* Background color */
+                width: 12px;
+                height: 12px;
+                border: 1px solid #3498db;
+                background-color: #ecf0f1;
             }
             QCheckBox::indicator:unchecked {
-                background-color: white; /* Background color when unchecked */
+                background-color: #ecf0f1;
             }
             QCheckBox::indicator:checked {
-                background-color: #3498db; /* Background color when checked */
-                border-color: #2980b9; /* Darker border color when checked */
+                background-color: #3498db;
             }
             QCheckBox::indicator:checked:pressed {
-                background-color: #2980b9; /* Even darker color when pressed */
-                border-color: #1f5a8b; /* Even darker border color when pressed */
+                background-color: #2980b9;
             }
         """)
         self.show_password_checkbox.stateChanged.connect(self.toggle_password_visibility)
+        layout.addWidget(self.show_password_checkbox)
 
+        # Login button
         self.login_button = QtWidgets.QPushButton("Login", self)
         self.login_button.setStyleSheet("""
             QPushButton {
                 background-color: #3498db;
                 color: white;
-                padding: 11px;
+                padding: 12px;
                 font-size: 14px;
                 border-radius: 5px;
                 border: none;
@@ -84,16 +102,17 @@ class Login_View(QtWidgets.QWidget):
             QPushButton:hover {
                 background-color: #2980b9;
             }
+            QPushButton:pressed {
+                background-color: #1f618d;
+            }
         """)
         self.login_button.clicked.connect(self.check_login)
-
-        layout.addWidget(self.username)
-        layout.addWidget(self.password)
-        layout.addWidget(self.show_password_checkbox)
         layout.addWidget(self.login_button)
 
+        # Stretch to push widgets upwards
         layout.addStretch()
 
+        # Center the window on the screen
         self.center_on_screen()
 
     def center_on_screen(self):

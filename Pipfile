@@ -12,6 +12,9 @@ httpx = "*"
 asyncio = "*"
 pyi18n-v2 = "*"
 pyyaml = "*"
+sounddevice = "*"
+numpy = "*"
+scipy = "*"
 
 [dev-packages]
 
