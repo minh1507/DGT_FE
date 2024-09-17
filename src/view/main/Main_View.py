@@ -345,7 +345,8 @@ class MainView(QtWidgets.QWidget):
             self.stop_button.setDisabled(False)
             self.duration_timer.start(1000)
 
-            self.stream = sd.InputStream(callback=self.audio_callback, channels=1, samplerate=self.fs)
+            # Start recording with increased buffer size for clarity
+            self.stream = sd.InputStream(callback=self.audio_callback, channels=1, samplerate=48000, blocksize=2048)
             self.stream.start()
 
     def stop_recording(self):
@@ -388,11 +389,17 @@ class MainView(QtWidgets.QWidget):
         try:
             # Concatenate frames into a single array
             audio_data = np.concatenate(self.frames)
-            
+
+            # Normalize audio data by adjusting it to fit within the 16-bit range ([-32768, 32767])
+            audio_data = audio_data / np.max(np.abs(audio_data)) * 32767  # 16-bit normalization
+
+            # Ensure the audio is of type int16 (which is the standard for 16-bit audio)
+            audio_data = audio_data.astype(np.int16)
+
             with wave.open(filename, 'wb') as wf:
                 wf.setnchannels(1)
-                wf.setsampwidth(2)  # 16-bit audio
-                wf.setframerate(self.fs)
+                wf.setsampwidth(2)  # 16-bit audio has a sample width of 2 bytes
+                wf.setframerate(48000)
                 wf.writeframes(audio_data.tobytes())
         except IOError as e:
             QtWidgets.QMessageBox.warning(self, "File Error", f"Failed to save recording: {e}")
