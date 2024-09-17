@@ -228,45 +228,64 @@ class MainView(QtWidgets.QWidget):
 
         self.record_button = QtWidgets.QPushButton("Record")
         self.record_button.setStyleSheet(""" 
-    QPushButton {
-        background-color: #e74c3c;
-        color: white;
-        font-size: 16px;  /* Smaller font size */
-        padding: 10px 20px;  /* Adjust padding for a sleeker look */
-        border-radius: 10px;  /* Smooth rounded corners */
-        border: 2px solid #c0392b;  /* Add a border for a clean look */
-    }
-    QPushButton:hover {
-        background-color: #c0392b;  /* Darker red on hover */
-        border-color: #e74c3c;  /* Swap border colors on hover */
-    }
-    """)
+            QPushButton {
+                background-color: #e74c3c;
+                color: white;
+                font-size: 16px;  /* Smaller font size */
+                padding: 10px 20px;  /* Adjust padding for a sleeker look */
+                border-radius: 10px;  /* Smooth rounded corners */
+                border: 2px solid #c0392b;  /* Add a border for a clean look */
+            }
+            QPushButton:hover {
+                background-color: #c0392b;  /* Darker red on hover */
+                border-color: #e74c3c;  /* Swap border colors on hover */
+            }
+        """)
         self.record_button.clicked.connect(self.record_audio)
         button_layout.addWidget(self.record_button)
 
         self.stop_button = QtWidgets.QPushButton("Stop")
         self.stop_button.setStyleSheet(""" 
-    QPushButton {
-        background-color: #555;
-        color: #ccc;
-        font-size: 16px;  /* Smaller font size */
-        padding: 10px 20px;  /* Adjust padding */
-        border-radius: 10px;  /* Smooth rounded corners */
-        border: 2px solid #444;  /* Subtle border */
-    }
-    QPushButton:hover {
-        background-color: #444;  /* Darker gray on hover */
-        border-color: #555;  /* Swap border colors on hover */
-    }
-    QPushButton:disabled {
-        background-color: #777;  /* Grayed-out when disabled */
-        color: #999;
-        border-color: #666;
-    }
-    """)
+            QPushButton {
+                background-color: #555;
+                color: #ccc;
+                font-size: 16px;  /* Smaller font size */
+                padding: 10px 20px;  /* Adjust padding */
+                border-radius: 10px;  /* Smooth rounded corners */
+                border: 2px solid #444;  /* Subtle border */
+            }
+            QPushButton:hover {
+                background-color: #444;  /* Darker gray on hover */
+                border-color: #555;  /* Swap border colors on hover */
+            }
+            QPushButton:disabled {
+                background-color: #777;  /* Grayed-out when disabled */
+                color: #999;
+                border-color: #666;
+            }
+        """)
         self.stop_button.setDisabled(True)
         self.stop_button.clicked.connect(self.stop_recording)
         button_layout.addWidget(self.stop_button)
+
+        # Add a new button to "Choose File" from the computer
+        self.choose_file_button = QtWidgets.QPushButton("Choose File")
+        self.choose_file_button.setStyleSheet(""" 
+            QPushButton {
+                background-color: #2980b9;
+                color: white;
+                font-size: 16px;
+                padding: 10px 20px;
+                border-radius: 10px;
+                border: 2px solid #1e6b95;
+            }
+            QPushButton:hover {
+                background-color: #1e6b95;
+                border-color: #2980b9;
+            }
+        """)
+        self.choose_file_button.clicked.connect(self.choose_file)
+        button_layout.addWidget(self.choose_file_button)
 
         home_layout.addLayout(button_layout)  # Add buttons layout directly to the main layout
 
@@ -288,6 +307,34 @@ class MainView(QtWidgets.QWidget):
 
         self.recordings_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.recordings_list.customContextMenuRequested.connect(self.show_context_menu)
+
+    def choose_file(self):
+        """Open a file dialog to choose a WAV file and rename it."""
+        # Open file dialog to select WAV file
+        file_dialog = QtWidgets.QFileDialog(self)
+        file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
+        file_dialog.setNameFilter("Audio Files (*.wav)")
+        if file_dialog.exec():
+            selected_files = file_dialog.selectedFiles()
+            if selected_files:
+                selected_file = selected_files[0]
+
+                # Prompt the user to enter a new name for the file
+                new_filename = self.prompt_for_filename()
+                if new_filename:
+                    new_file_path = os.path.join("src", "asset", "output", new_filename)
+
+                    try:
+                        # Copy the selected file to the output directory with the new name
+                        QtCore.QFile.copy(selected_file, new_file_path)
+
+                        # Add the new recording to the list
+                        self.recordings.append(new_filename)
+                        self.refresh_recordings_list()
+
+                        QtWidgets.QMessageBox.information(self, "File Added", f"File has been added and renamed as {new_filename}.")
+                    except Exception as e:
+                        QtWidgets.QMessageBox.warning(self, "Error", f"Failed to copy file: {e}")
 
 
     def show_context_menu(self, pos):
