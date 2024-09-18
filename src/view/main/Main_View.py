@@ -11,6 +11,8 @@ from common.const.Global_Const import Global_Const
 from Module import Module
 from view.layout.Toolbar_View import Toolbar_View
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
+import scipy.signal as signal
+import noisereduce as nr
 
 class RecordingItem(QWidget):
     delete_requested = Signal(str)
@@ -171,32 +173,27 @@ class MainView(QtWidgets.QWidget):
     def __init__(self, login_window):
         super().__init__()
 
+        # Initialize theme and layout
         ThemeUtil.get(parent=self, name_file=Global_Const.Theme.CORE_THEME)
-
         layout = QtWidgets.QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-
         toolbar = Toolbar_View(login_window)
         layout.addWidget(toolbar.main())
-
         for i in Module.widgets:
             layout.addWidget(i())
-
         self.create_home_view()
-
         self.stacked_widget = QtWidgets.QStackedWidget(self)
         self.stacked_widget.addWidget(self.home_view)
         layout.addWidget(self.stacked_widget)
 
+        # Initialize recording variables
         self.is_recording = False
         self.fs = 44100
         self.frames = []
         self.duration_timer = QTimer(self)
         self.duration_timer.timeout.connect(self.update_timer)
         self.record_seconds = 0
-
         self.recordings = []
-
         self.load_recordings()
 
     def create_home_view(self):
@@ -222,7 +219,7 @@ class MainView(QtWidgets.QWidget):
         self.timer_label.setStyleSheet("font-size: 32px; color: #fff; margin-bottom: 20px;")
         home_layout.addWidget(self.timer_label)
 
-        button_layout = QtWidgets.QHBoxLayout()  # Change to QHBoxLayout for horizontal arrangement
+        button_layout = QtWidgets.QHBoxLayout()
         button_layout.setSpacing(20)
         button_layout.setAlignment(QtCore.Qt.AlignCenter)
 
@@ -231,14 +228,14 @@ class MainView(QtWidgets.QWidget):
             QPushButton {
                 background-color: #e74c3c;
                 color: white;
-                font-size: 16px;  /* Smaller font size */
-                padding: 10px 20px;  /* Adjust padding for a sleeker look */
-                border-radius: 10px;  /* Smooth rounded corners */
-                border: 2px solid #c0392b;  /* Add a border for a clean look */
+                font-size: 16px;
+                padding: 10px 20px;
+                border-radius: 10px;
+                border: 2px solid #c0392b;
             }
             QPushButton:hover {
-                background-color: #c0392b;  /* Darker red on hover */
-                border-color: #e74c3c;  /* Swap border colors on hover */
+                background-color: #c0392b;
+                border-color: #e74c3c;
             }
         """)
         self.record_button.clicked.connect(self.record_audio)
@@ -249,17 +246,17 @@ class MainView(QtWidgets.QWidget):
             QPushButton {
                 background-color: #555;
                 color: #ccc;
-                font-size: 16px;  /* Smaller font size */
-                padding: 10px 20px;  /* Adjust padding */
-                border-radius: 10px;  /* Smooth rounded corners */
-                border: 2px solid #444;  /* Subtle border */
+                font-size: 16px;
+                padding: 10px 20px;
+                border-radius: 10px;
+                border: 2px solid #444;
             }
             QPushButton:hover {
-                background-color: #444;  /* Darker gray on hover */
-                border-color: #555;  /* Swap border colors on hover */
+                background-color: #444;
+                border-color: #555;
             }
             QPushButton:disabled {
-                background-color: #777;  /* Grayed-out when disabled */
+                background-color: #777;
                 color: #999;
                 border-color: #666;
             }
@@ -268,7 +265,6 @@ class MainView(QtWidgets.QWidget):
         self.stop_button.clicked.connect(self.stop_recording)
         button_layout.addWidget(self.stop_button)
 
-        # Add a new button to "Choose File" from the computer
         self.choose_file_button = QtWidgets.QPushButton("Choose File")
         self.choose_file_button.setStyleSheet(""" 
             QPushButton {
@@ -287,8 +283,8 @@ class MainView(QtWidgets.QWidget):
         self.choose_file_button.clicked.connect(self.choose_file)
         button_layout.addWidget(self.choose_file_button)
 
-        home_layout.addLayout(button_layout)  # Add buttons layout directly to the main layout
-
+        home_layout.addLayout(button_layout)
+        
         self.recordings_list = QtWidgets.QListWidget()
         self.recordings_list.setStyleSheet(""" 
             QListWidget {
@@ -299,10 +295,8 @@ class MainView(QtWidgets.QWidget):
                 border-radius: 10px;
             }
         """)
-        self.recordings_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)  # Make sure it can expand
-
+        self.recordings_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         home_layout.addStretch()
-
         home_layout.addWidget(self.recordings_list)
 
         self.recordings_list.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -310,7 +304,6 @@ class MainView(QtWidgets.QWidget):
 
     def choose_file(self):
         """Open a file dialog to choose a WAV file and rename it."""
-        # Open file dialog to select WAV file
         file_dialog = QtWidgets.QFileDialog(self)
         file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
         file_dialog.setNameFilter("Audio Files (*.wav)")
@@ -318,24 +311,34 @@ class MainView(QtWidgets.QWidget):
             selected_files = file_dialog.selectedFiles()
             if selected_files:
                 selected_file = selected_files[0]
-
-                # Prompt the user to enter a new name for the file
                 new_filename = self.prompt_for_filename()
                 if new_filename:
                     new_file_path = os.path.join("src", "asset", "output", new_filename)
-
                     try:
-                        # Copy the selected file to the output directory with the new name
-                        QtCore.QFile.copy(selected_file, new_file_path)
-
-                        # Add the new recording to the list
+                        # Apply noise filtering to the selected file
+                        self.filter_noise(selected_file, new_file_path)
                         self.recordings.append(new_filename)
                         self.refresh_recordings_list()
-
                         QtWidgets.QMessageBox.information(self, "File Added", f"File has been added and renamed as {new_filename}.")
                     except Exception as e:
-                        QtWidgets.QMessageBox.warning(self, "Error", f"Failed to copy file: {e}")
+                        QtWidgets.QMessageBox.warning(self, "Error", f"Failed to process file: {e}")
 
+    def filter_noise(self, input_file, output_file):
+        """Apply noise filtering to the audio file and save the result."""
+        # Read the input WAV file
+        with wave.open(input_file, 'rb') as wf:
+            params = wf.getparams()
+            audio_data = wf.readframes(params.nframes)
+            audio_data = np.frombuffer(audio_data, dtype=np.int16)
+
+        # Apply noise filtering (low-pass filter with adjusted parameters)
+        b, a = signal.butter(4, 0.3, btype='low')  # Adjust the cutoff frequency as needed
+        filtered_data = signal.filtfilt(b, a, audio_data)
+
+        # Save the filtered audio to the output file
+        with wave.open(output_file, 'wb') as wf:
+            wf.setparams(params)
+            wf.writeframes(filtered_data.astype(np.int16).tobytes())
 
     def show_context_menu(self, pos):
         """Show context menu for recordings list."""
@@ -346,10 +349,8 @@ class MainView(QtWidgets.QWidget):
             delete_action = QAction("Delete", self)
             context_menu.addAction(play_action)
             context_menu.addAction(delete_action)
-
             play_action.triggered.connect(lambda: self.play_recording(item.text()))
             delete_action.triggered.connect(lambda: self.delete_recording(item.text()))
-
             context_menu.exec(self.recordings_list.viewport().mapToGlobal(pos))
 
     def play_recording(self, filename):
@@ -359,17 +360,15 @@ class MainView(QtWidgets.QWidget):
 
     def delete_recording(self, filename):
         """Delete a selected recording."""
-        # First, stop any playback associated with the file
         for i in range(self.recordings_list.count()):
             item_widget = self.recordings_list.itemWidget(self.recordings_list.item(i))
             if item_widget and item_widget.filename == filename:
-                item_widget.player.stop()  # Stop the media player
-                item_widget.player.setSource(QUrl())  # Clear the source to release the file
-
+                item_widget.player.stop()
+                item_widget.player.setSource(QUrl())
         file_path = os.path.join("src", "asset", "output", filename)
         try:
             if os.path.exists(file_path):
-                os.remove(file_path)  # Now, safely remove the file
+                os.remove(file_path)
                 self.recordings.remove(filename)
                 self.refresh_recordings_list()
                 QtWidgets.QMessageBox.information(self, "Deleted", f"{filename} has been deleted.")
@@ -391,8 +390,6 @@ class MainView(QtWidgets.QWidget):
             self.record_button.setDisabled(True)
             self.stop_button.setDisabled(False)
             self.duration_timer.start(1000)
-
-            # Start recording with increased buffer size for clarity
             self.stream = sd.InputStream(callback=self.audio_callback, channels=1, samplerate=48000, blocksize=2048)
             self.stream.start()
 
@@ -404,19 +401,12 @@ class MainView(QtWidgets.QWidget):
             self.record_button.setDisabled(False)
             self.stop_button.setDisabled(True)
             self.duration_timer.stop()
-
             self.stream.stop()
             self.stream.close()
-
-            # Prompt the user for a filename
             filename = self.prompt_for_filename()
             if filename:
                 file_path = os.path.join("src", "asset", "output", filename)
-
-                # Save the recording to the specified file
                 self.save_wav(file_path)
-                
-                # Add the new recording to the list
                 self.recordings.append(filename)
                 self.refresh_recordings_list()
                 QtWidgets.QMessageBox.information(self, "Saved", f"Recording has been saved as {filename}.")
@@ -425,37 +415,60 @@ class MainView(QtWidgets.QWidget):
         """Callback function for audio recording."""
         if status:
             print(status, flush=True)
-        self.frames.append(indata.copy())
+        filtered_data = self.apply_filters(indata.copy())
+        self.frames.append(filtered_data)
+
+    def apply_filters(self, audio_data):
+        """Apply NLMS filter to the audio data."""
+        return self.apply_nlms_filter(audio_data)
+
+    def apply_nlms_filter(self, audio_data):
+        """Apply an NLMS filter to the audio data."""
+        # Parameters
+        mu = 0.1  # Step size for NLMS
+        filter_length = 64  # Length of the filter
+        epsilon = 1e-6  # Small value to avoid division by zero
+
+        filter_weights = np.zeros(filter_length)
+        buffer = np.zeros(filter_length)
+        output_data = np.zeros_like(audio_data)
+
+        for i in range(filter_length, len(audio_data)):
+            buffer[1:] = buffer[:-1]
+            buffer[0] = audio_data[i]
+
+            output = np.dot(filter_weights, buffer)
+            output_data[i] = output
+
+            error = audio_data[i] - output
+
+            norm_factor = np.dot(buffer, buffer) + epsilon
+            filter_weights += mu * error * buffer / norm_factor
+
+        return output_data
 
     def save_wav(self, filename):
         """Save recorded audio to a WAV file."""
         output_dir = os.path.dirname(filename)
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-
         try:
-            # Concatenate frames into a single array
             audio_data = np.concatenate(self.frames)
-
-            # Normalize audio data by adjusting it to fit within the 16-bit range ([-32768, 32767])
-            audio_data = audio_data / np.max(np.abs(audio_data)) * 32767  # 16-bit normalization
-
-            # Ensure the audio is of type int16 (which is the standard for 16-bit audio)
+            audio_data = audio_data / np.max(np.abs(audio_data)) * 32767
             audio_data = audio_data.astype(np.int16)
-
             with wave.open(filename, 'wb') as wf:
                 wf.setnchannels(1)
-                wf.setsampwidth(2)  # 16-bit audio has a sample width of 2 bytes
+                wf.setsampwidth(2)
                 wf.setframerate(48000)
                 wf.writeframes(audio_data.tobytes())
         except IOError as e:
             QtWidgets.QMessageBox.warning(self, "File Error", f"Failed to save recording: {e}")
 
+
     def prompt_for_filename(self):
         """Prompt the user to input a filename for the new recording."""
         filename, ok = QInputDialog.getText(self, 'Enter Filename', 'Enter the name for the new recording (without extension):')
         if ok and filename:
-            # Ensure filename ends with '.wav'
             if not filename.endswith('.wav'):
                 filename += '.wav'
             return filename
@@ -482,11 +495,8 @@ class MainView(QtWidgets.QWidget):
         for filename in self.recordings:
             item = QListWidgetItem()
             widget = RecordingItem(filename, parent=self)
-            widget.delete_requested.connect(self.delete_recording)  # Connect signal here
+            widget.delete_requested.connect(self.delete_recording)
             item.setSizeHint(widget.sizeHint())
             self.recordings_list.addItem(item)
             self.recordings_list.setItemWidget(item, widget)
-
-        # Set fixed height of QListWidget to 400
         self.recordings_list.setFixedHeight(400)
-
