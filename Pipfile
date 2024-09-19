@@ -15,6 +15,7 @@ pyyaml = "*"
 sounddevice = "*"
 numpy = "*"
 scipy = "*"
+matplotlib = "*"
 
 [dev-packages]
 
