@@ -5,13 +5,14 @@ import sounddevice as sd
 from PySide6 import QtWidgets, QtCore
 from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt, QTimer, QUrl
-from PySide6.QtWidgets import QListWidgetItem, QMenu, QInputDialog, QSizePolicy
+from PySide6.QtWidgets import QListWidgetItem, QMenu, QInputDialog, QSizePolicy, QFileDialog
 from util.Theme_Util import ThemeUtil
 from common.const.Global_Const import Global_Const
 from Module import Module
 from view.layout.Toolbar_View import Toolbar_View
 from ..layout.Recording import RecordingItem
-
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 class MainView(QtWidgets.QWidget):
     def __init__(self, login_window):
         super().__init__()
@@ -33,6 +34,15 @@ class MainView(QtWidgets.QWidget):
         self.duration_timer.timeout.connect(self.update_timer)
         self.record_seconds = 0
         self.recordings = []
+
+        self.figure, (self.ax1, self.ax2) = plt.subplots(nrows=1, ncols=2, figsize=(12, 5))
+        
+        self.figure.subplots_adjust(wspace=0.4)  
+
+        self.canvas = FigureCanvas(self.figure)
+        self.canvas.setParent(self) 
+        layout.addWidget(self.canvas)
+
         self.load_recordings()
 
     def create_home_view(self):
@@ -97,6 +107,26 @@ class MainView(QtWidgets.QWidget):
         self.stop_button.setDisabled(True)
         self.stop_button.clicked.connect(self.stop_recording)
         button_layout.addWidget(self.stop_button)
+        
+        # New Choose File button
+        self.choose_file_button = QtWidgets.QPushButton("Choose File")
+        self.choose_file_button.setStyleSheet("""
+            QPushButton {
+                background-color: #3498db;
+                color: white;
+                font-size: 16px;
+                padding: 10px 20px;
+                border-radius: 10px;
+                border: 2px solid #2980b9;
+            }
+            QPushButton:hover {
+                background-color: #2980b9;
+                border-color: #3498db;
+            }
+        """)
+        self.choose_file_button.clicked.connect(self.choose_file)
+        button_layout.addWidget(self.choose_file_button)
+        
         home_layout.addLayout(button_layout)
         self.recordings_list = QtWidgets.QListWidget()
         self.recordings_list.setStyleSheet("""
@@ -113,6 +143,98 @@ class MainView(QtWidgets.QWidget):
         home_layout.addWidget(self.recordings_list)
         self.recordings_list.setContextMenuPolicy(Qt.CustomContextMenu)
         self.recordings_list.customContextMenuRequested.connect(self.show_context_menu)
+
+    def choose_file(self):
+        options = QFileDialog.Options()
+        options |= QFileDialog.ReadOnly
+        file_path, _ = QFileDialog.getOpenFileName(self, "Choose Audio File", "", "Audio Files (*.wav);;All Files (*)", options=options)
+        
+        if file_path:
+            filename = os.path.basename(file_path)
+            
+            new_filename, ok = QInputDialog.getText(self, 'Enter Filename', 'Enter the name for the new file (without extension):')
+            
+            if ok and new_filename:
+                if not new_filename.endswith('.wav'):
+                    new_filename += '.wav'
+                    
+                new_file_path = os.path.join("src", "asset", "output", new_filename)
+                
+                try:
+                    if not os.path.exists(os.path.dirname(new_file_path)):
+                        os.makedirs(os.path.dirname(new_file_path))
+
+                    with wave.open(file_path, 'rb') as wf:
+                        fs = wf.getframerate()
+                        n_channels = wf.getnchannels()
+                        samp_width = wf.getsampwidth()
+                        n_frames = wf.getnframes()
+                        audio_data = np.frombuffer(wf.readframes(n_frames), dtype=np.int16)
+
+                    if audio_data.ndim > 1:
+                        audio_data = audio_data.flatten()
+
+                    filtered_data = self.apply_nlms_filter(audio_data.astype(float))
+
+                    self.save_filtered_wav(new_file_path, filtered_data, fs)
+
+                    self.recordings.append(new_filename)
+                    self.refresh_recordings_list()
+                    QtWidgets.QMessageBox.information(self, "File Added", f"{new_filename} has been added and filtered.")
+
+                    self.plot_audio_file_data(audio_data, filtered_data)
+
+                except Exception as e:
+                    QtWidgets.QMessageBox.warning(self, "File Error", f"Failed to process file: {e}")
+
+    def plot_audio_file_data(self, input_data, filtered_data):
+        self.ax1.clear()
+        self.ax2.clear()
+
+        time = np.arange(len(input_data)) / self.fs
+        self.ax1.plot(time, input_data, label='Input Signal', alpha=0.5)
+        self.ax1.plot(time, filtered_data, label='Filtered Signal', alpha=0.75)
+        self.ax1.set_title('Input vs Filtered Signal (Time Domain)')
+        self.ax1.set_xlabel('Time (s)')
+        self.ax1.set_ylabel('Amplitude')
+        self.ax1.legend()
+
+        fft_input = np.fft.fft(input_data)
+        fft_filtered = np.fft.fft(filtered_data)
+        freqs = np.fft.fftfreq(len(input_data), 1/self.fs)
+
+        half_range = len(freqs) // 2
+        freqs = freqs[:half_range]
+        fft_input = np.abs(fft_input[:half_range])
+        fft_filtered = np.abs(fft_filtered[:half_range])
+
+        self.ax2.plot(freqs, fft_input, label='Input Signal', alpha=0.5, color='blue')
+        self.ax2.plot(freqs, fft_filtered, label='Filtered Signal', alpha=0.75, color='red')
+        self.ax2.set_title('Input vs Filtered Signal (Frequency Domain)')
+        self.ax2.set_xlabel('Frequency (Hz)')
+        self.ax2.set_ylabel('Magnitude')
+        self.ax2.legend()
+
+        self.canvas.draw()
+
+    def save_filtered_wav(self, filename, audio_data, fs):
+        output_dir = os.path.dirname(filename)
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        try:
+            if audio_data.ndim > 1:
+                audio_data = audio_data.flatten()
+            
+            audio_data = audio_data / np.max(np.abs(audio_data))
+            audio_data = (audio_data * 32767).astype(np.int16)
+            
+            with wave.open(filename, 'wb') as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(fs)
+                wf.writeframes(audio_data.tobytes())
+        except Exception as e:
+            QtWidgets.QMessageBox.warning(self, "File Error", f"Failed to save filtered recording: {e}")
 
     def show_context_menu(self, pos):
         item = self.recordings_list.itemAt(pos)
@@ -158,7 +280,8 @@ class MainView(QtWidgets.QWidget):
             self.record_button.setDisabled(True)
             self.stop_button.setDisabled(False)
             self.duration_timer.start(1000)
-            self.stream = sd.InputStream(callback=self.audio_callback, channels=1, samplerate=48000, blocksize=2048)
+            self.fs = 44100 
+            self.stream = sd.InputStream(callback=self.audio_callback, channels=1, samplerate=self.fs, blocksize=2048)
             self.stream.start()
 
     def stop_recording(self):
@@ -181,27 +304,78 @@ class MainView(QtWidgets.QWidget):
     def audio_callback(self, indata, frames, time, status):
         if status:
             print(status, flush=True)
-        filtered_data = self.apply_filters(indata.copy())
+        input_data, filtered_data = self.apply_filters(indata.copy())
         self.frames.append(filtered_data)
+        self.plot_audio_comparison(input_data, filtered_data)  
+    
+    def plot_audio_comparison(self, input_data, filtered_data):
+        self.ax1.clear()
+        self.ax2.clear()
+
+        self.ax1.plot(input_data, label='Input Signal', alpha=0.5)
+        self.ax1.plot(filtered_data, label='Filtered Signal', alpha=0.75)
+        self.ax1.set_title('Input Signal vs Filtered Signal (Axis 1)')
+        self.ax1.legend()
+
+        self.ax2.plot(input_data, label='Input Signal', alpha=0.5, color='blue')
+        self.ax2.plot(filtered_data, label='Filtered Signal', alpha=0.75, color='red')
+        self.ax2.set_title('Input Signal vs Filtered Signal (Axis 2)')
+        self.ax2.legend()
+
+        self.canvas.draw()
 
     def apply_filters(self, audio_data):
-        return self.apply_nlms_filter(audio_data)
+        filtered_data = self.apply_nlms_filter(audio_data)
+        return audio_data, filtered_data
 
     def apply_nlms_filter(self, audio_data):
-        mu = 0.1
-        filter_length = 64
-        epsilon = 1e-6
+        mu = 0.01  
+        filter_length = 128  
+        epsilon = 1e-4  
+
         filter_weights = np.zeros(filter_length)
         buffer = np.zeros(filter_length)
         output_data = np.zeros_like(audio_data)
+
+        buffer[:filter_length] = np.zeros(filter_length)
+
         for i in range(filter_length, len(audio_data)):
             buffer[1:] = buffer[:-1]
             buffer[0] = audio_data[i]
+
             output = np.dot(filter_weights, buffer)
-            output_data[i] = output
+
             error = audio_data[i] - output
+
             norm_factor = np.dot(buffer, buffer) + epsilon
             filter_weights += mu * error * buffer / norm_factor
+
+            output_data[i] = output
+
+        return output_data
+
+    def apply_rls_filter(self, audio_data):
+        delta = 1.0
+        filter_length = 64
+        lambda_ = 0.99
+        filter_weights = np.zeros(filter_length)
+        buffer = np.zeros(filter_length)
+        output_data = np.zeros_like(audio_data)
+        P = np.eye(filter_length) / delta
+
+        for i in range(filter_length, len(audio_data)):
+            buffer[1:] = buffer[:-1]
+            buffer[0] = audio_data[i]
+            
+            x = buffer
+            k = P @ x / (lambda_ + x @ P @ x)
+            output = x @ filter_weights
+            error = audio_data[i] - output
+            filter_weights += k * error
+            P = (P - np.outer(k, x @ P)) / lambda_
+            
+            output_data[i] = output
+
         return output_data
 
     def save_wav(self, filename):
@@ -210,15 +384,17 @@ class MainView(QtWidgets.QWidget):
             os.makedirs(output_dir)
         try:
             audio_data = np.concatenate(self.frames)
-            audio_data = audio_data / np.max(np.abs(audio_data)) * 32767
-            audio_data = audio_data.astype(np.int16)
+            audio_data = audio_data / np.max(np.abs(audio_data))  
+            audio_data = (audio_data * 32767).astype(np.int16)  
+
             with wave.open(filename, 'wb') as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2)
-                wf.setframerate(48000)
+                wf.setnchannels(1) 
+                wf.setsampwidth(2)  
+                wf.setframerate(self.fs)  
                 wf.writeframes(audio_data.tobytes())
         except IOError as e:
             QtWidgets.QMessageBox.warning(self, "File Error", f"Failed to save recording: {e}")
+
 
     def prompt_for_filename(self):
         filename, ok = QInputDialog.getText(self, 'Enter Filename', 'Enter the name for the new recording (without extension):')

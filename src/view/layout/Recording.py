@@ -142,3 +142,10 @@ class RecordingItem(QWidget):
         seconds = milliseconds / 1000
         minutes, seconds = divmod(int(seconds), 60)
         return f"{minutes:02}:{seconds:02}"
+
+    def get_filename(self):
+        return self.filename
+
+
+def sort_recording_items(recording_items):
+    return sorted(recording_items, key=lambda item: os.path.splitext(item.get_filename())[0])
