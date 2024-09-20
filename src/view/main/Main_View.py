@@ -147,10 +147,12 @@ class MainView(QtWidgets.QWidget):
     def choose_file(self):
         options = QFileDialog.Options()
         options |= QFileDialog.ReadOnly
-        file_path, _ = QFileDialog.getOpenFileName(self, "Choose Audio File", "", "Audio Files (*.wav);;All Files (*)", options=options)
+        mic_file_path, _ = QFileDialog.getOpenFileName(self, "Choose Microphone File", "", "Audio Files (*.wav);;All Files (*)", options=options)
+        far_end_file_path, _ = QFileDialog.getOpenFileName(self, "Choose Far-End File", "", "Audio Files (*.wav);;All Files (*)", options=options)
         
-        if file_path:
-            filename = os.path.basename(file_path)
+        if mic_file_path and far_end_file_path:
+            mic_filename = os.path.basename(mic_file_path)
+            far_end_filename = os.path.basename(far_end_file_path)
             
             new_filename, ok = QInputDialog.getText(self, 'Enter Filename', 'Enter the name for the new file (without extension):')
             
@@ -161,28 +163,33 @@ class MainView(QtWidgets.QWidget):
                 new_file_path = os.path.join("src", "asset", "output", new_filename)
                 
                 try:
-                    if not os.path.exists(os.path.dirname(new_file_path)):
-                        os.makedirs(os.path.dirname(new_file_path))
+                    with wave.open(mic_file_path, 'rb') as wf_mic:
+                        fs_mic = wf_mic.getframerate()
+                        mic_n_channels = wf_mic.getnchannels()
+                        mic_samp_width = wf_mic.getsampwidth()
+                        mic_n_frames = wf_mic.getnframes()
+                        mic_audio_data = np.frombuffer(wf_mic.readframes(mic_n_frames), dtype=np.int16)
 
-                    with wave.open(file_path, 'rb') as wf:
-                        fs = wf.getframerate()
-                        n_channels = wf.getnchannels()
-                        samp_width = wf.getsampwidth()
-                        n_frames = wf.getnframes()
-                        audio_data = np.frombuffer(wf.readframes(n_frames), dtype=np.int16)
+                    with wave.open(far_end_file_path, 'rb') as wf_far:
+                        fs_far = wf_far.getframerate()
+                        far_n_channels = wf_far.getnchannels()
+                        far_samp_width = wf_far.getsampwidth()
+                        far_n_frames = wf_far.getnframes()
+                        far_end_audio_data = np.frombuffer(wf_far.readframes(far_n_frames), dtype=np.int16)
 
-                    if audio_data.ndim > 1:
-                        audio_data = audio_data.flatten()
+                    if len(mic_audio_data) != len(far_end_audio_data):
+                        QtWidgets.QMessageBox.warning(self, "File Error", "The microphone and far-end files must be the same length.")
+                        return
 
-                    filtered_data = self.apply_nlms_filter(audio_data.astype(float))
+                    aec_output = self.apply_nlms_aec(mic_audio_data.astype(float), far_end_audio_data.astype(float))
 
-                    self.save_filtered_wav(new_file_path, filtered_data, fs)
+                    self.save_filtered_wav(new_file_path, aec_output, fs_mic)
 
                     self.recordings.append(new_filename)
                     self.refresh_recordings_list()
-                    QtWidgets.QMessageBox.information(self, "File Added", f"{new_filename} has been added and filtered.")
+                    QtWidgets.QMessageBox.information(self, "File Added", f"{new_filename} has been added and processed for echo cancellation.")
 
-                    self.plot_audio_file_data(audio_data, filtered_data)
+                    self.plot_audio_file_data(mic_audio_data, aec_output)
 
                 except Exception as e:
                     QtWidgets.QMessageBox.warning(self, "File Error", f"Failed to process file: {e}")
@@ -235,6 +242,30 @@ class MainView(QtWidgets.QWidget):
                 wf.writeframes(audio_data.tobytes())
         except Exception as e:
             QtWidgets.QMessageBox.warning(self, "File Error", f"Failed to save filtered recording: {e}")
+
+    def apply_nlms_aec(self, mic_signal, far_end_signal):
+        mu = 0.0005
+        filter_length = 128  
+        epsilon = 1e-4 
+
+        filter_weights = np.zeros(filter_length) 
+        buffer = np.zeros(filter_length) 
+        output_data = np.zeros_like(mic_signal)  
+
+        for i in range(filter_length, len(mic_signal)):
+            buffer[1:] = buffer[:-1]
+            buffer[0] = far_end_signal[i]
+
+            estimated_echo = np.dot(filter_weights, buffer)
+
+            error = mic_signal[i] - estimated_echo
+
+            norm_factor = np.dot(buffer, buffer) + epsilon  
+            filter_weights += mu * error * buffer / norm_factor
+
+            output_data[i] = error
+
+        return output_data
 
     def show_context_menu(self, pos):
         item = self.recordings_list.itemAt(pos)
@@ -329,8 +360,8 @@ class MainView(QtWidgets.QWidget):
         return audio_data, filtered_data
 
     def apply_nlms_filter(self, audio_data):
-        mu = 0.01  
-        filter_length = 128  
+        mu = 0.5
+        filter_length = 128
         epsilon = 1e-4  
 
         filter_weights = np.zeros(filter_length)
@@ -384,13 +415,13 @@ class MainView(QtWidgets.QWidget):
             os.makedirs(output_dir)
         try:
             audio_data = np.concatenate(self.frames)
-            audio_data = audio_data / np.max(np.abs(audio_data))  
-            audio_data = (audio_data * 32767).astype(np.int16)  
+            audio_data = audio_data / np.max(np.abs(audio_data))
+            audio_data = (audio_data * 32767).astype(np.int16)
 
             with wave.open(filename, 'wb') as wf:
-                wf.setnchannels(1) 
-                wf.setsampwidth(2)  
-                wf.setframerate(self.fs)  
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(self.fs)
                 wf.writeframes(audio_data.tobytes())
         except IOError as e:
             QtWidgets.QMessageBox.warning(self, "File Error", f"Failed to save recording: {e}")
